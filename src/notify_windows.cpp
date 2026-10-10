@@ -114,13 +114,44 @@ void ask(const std::vector<store::Promo>& promos, const std::string& account,
     cv.wait(lock, [&] { return pending == 0; });
 }
 
-void open_store(uint32_t appid) {
-    std::wstring steam = L"steam://store/" + std::to_wstring(appid);
-    // ShellExecute retorna <= 32 em erro (ex.: nenhum handler para steam://).
-    if (reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", steam.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) <= 32) {
-        std::wstring web = L"https://store.steampowered.com/app/" + std::to_wstring(appid) + L"/";
-        ShellExecuteW(nullptr, L"open", web.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    }
+namespace detail {
+
+// A Steam registra o pid em HKCU\Software\Valve\Steam\ActiveProcess (0 quando fechada).
+std::optional<std::chrono::seconds> steam_age() {
+    DWORD pid = 0, size = sizeof pid;
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Valve\\Steam\\ActiveProcess", L"pid", RRF_RT_REG_DWORD, nullptr,
+                     &pid, &size) != ERROR_SUCCESS ||
+        pid == 0)
+        return std::nullopt;
+
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!h) return std::nullopt; // o pid ficou no registro, mas o processo já fechou
+
+    // O pid pode ter sido reaproveitado por outro programa: confere que é a steam.exe e que está viva.
+    wchar_t image[MAX_PATH];
+    DWORD len = MAX_PATH, exit_code = 0;
+    FILETIME created{}, exited{}, kernel{}, user{};
+    bool ok = QueryFullProcessImageNameW(h, 0, image, &len) && GetExitCodeProcess(h, &exit_code) &&
+              exit_code == STILL_ACTIVE && GetProcessTimes(h, &created, &exited, &kernel, &user);
+    CloseHandle(h);
+    std::wstring name(image, ok ? len : 0);
+    auto slash = name.find_last_of(L"\\/");
+    if (!ok || _wcsicmp(name.substr(slash == std::wstring::npos ? 0 : slash + 1).c_str(), L"steam.exe") != 0)
+        return std::nullopt;
+
+    FILETIME now_ft;
+    GetSystemTimeAsFileTime(&now_ft);
+    auto ticks = [](FILETIME f) { return (static_cast<uint64_t>(f.dwHighDateTime) << 32) | f.dwLowDateTime; };
+    uint64_t now = ticks(now_ft), start = ticks(created); // unidades de 100 ns
+    return std::chrono::seconds(now > start ? (now - start) / 10'000'000 : 0);
 }
+
+// ShellExecute retorna <= 32 em erro (ex.: nenhum programa para steam://).
+bool open_url(const std::string& url) {
+    std::wstring w = widen(url);
+    return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", w.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
+}
+
+} // namespace detail
 
 } // namespace notify

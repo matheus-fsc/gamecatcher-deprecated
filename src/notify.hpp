@@ -6,7 +6,10 @@
 
 #include "store.hpp"
 
+#include <chrono>
+#include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,6 +28,11 @@ namespace detail {
 // Textos comuns às duas plataformas.
 std::string title(const store::Promo& p);
 std::string body(const store::Promo& p, const std::string& account);
+
+// Implementados por plataforma (notify_linux.cpp / notify_windows.cpp):
+// há quanto tempo o cliente Steam está rodando (nullopt = não está) e abrir um link.
+std::optional<std::chrono::seconds> steam_age();
+bool open_url(const std::string& url); // false se não houver programa para o link
 } // namespace detail
 
 // Abre a página do app no cliente Steam (steam://store/<appid>), ou no navegador se não houver cliente.

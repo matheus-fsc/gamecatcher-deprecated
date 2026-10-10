@@ -47,7 +47,7 @@ int run(const std::vector<std::string>& args) {
 }
 
 // Há quanto tempo o cliente Steam está rodando, ou nullopt se não está.
-std::optional<std::chrono::seconds> steam_age() {
+std::optional<std::chrono::seconds> steam_process_age() {
     const char* home = std::getenv("HOME");
     if (!home) return std::nullopt;
     std::ifstream pidfile(std::string(home) + "/.steam/steam.pid");
@@ -178,25 +178,13 @@ void ask(const std::vector<store::Promo>& promos, const std::string& account,
     }
 }
 
-void open_store(uint32_t appid) {
-    // A Steam recém-aberta (ainda fazendo login) descarta links steam:// que chegam nesse
-    // intervalo. Então: aberturas em fila; se a Steam é jovem, espera ela completar kWarmup.
-    constexpr auto kWarmup = std::chrono::seconds(40);
-    static std::mutex mu;
-    static std::optional<std::chrono::steady_clock::time_point> launched_by_us;
-    std::lock_guard lock(mu);
+namespace detail {
 
-    auto age = steam_age();
-    if (launched_by_us) {
-        auto ours = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - *launched_by_us);
-        age = age ? std::min(*age, ours) : ours; // o steam.pid pode ainda não ter sido atualizado
-    }
-    if (age && *age < kWarmup) std::this_thread::sleep_for(kWarmup - *age);
-    if (!age) launched_by_us = std::chrono::steady_clock::now(); // este clique vai abrir a Steam
+std::optional<std::chrono::seconds> steam_age() { return steam_process_age(); }
 
-    // xdg-open sai com erro se não houver handler para steam:// (cliente não instalado).
-    if (run({"xdg-open", "steam://store/" + std::to_string(appid)}) != 0)
-        run({"xdg-open", "https://store.steampowered.com/app/" + std::to_string(appid) + "/"});
-}
+// xdg-open sai com erro se não houver handler para o esquema (ex.: steam:// sem cliente).
+bool open_url(const std::string& url) { return run({"xdg-open", url}) == 0; }
+
+} // namespace detail
 
 } // namespace notify

@@ -43,7 +43,7 @@ Registre a versão do Windows (`winver` ou `[System.Environment]::OSVersion.Vers
 
 | # | Comando | Esperado |
 |---|---|---|
-| 2.1 | `.\gamecatcher.exe --version` | `gamecatcher 1.0.0` |
+| 2.1 | `.\gamecatcher.exe --version` | `gamecatcher 1.0.1` (ou mais nova) |
 | 2.2 | `.\gamecatcher.exe --help` | Texto de ajuda com acentos corretos (ex.: "notificação", "promoções") |
 | 2.3 | `.\gamecatcher.exe list` | Primeira linha `conta: <nome da conta Steam em uso>`, depois a lista de promoções com status (`novo`, `na conta`, `sem base`...) |
 | 2.4 | `.\gamecatcher.exe db` | `0 entradas em C:\Users\...\AppData\Local\gamecatcher\seen.db` (ou as entradas existentes) |
@@ -87,10 +87,11 @@ Este teste precisa do usuário humano. Explique a ele o que vai acontecer e peç
 | 4.2 | Peça ao usuário para clicar em "Adicionar à conta" | Em poucos segundos: `confirmado  <jogo> (<conta>)` |
 | 4.3 | Clique em **Resgatar** em dois toasts seguidos | A segunda página só abre depois que a primeira foi confirmada (ou após 10 minutos) |
 | 4.4 | Com a Steam **fechada**, clique em **Resgatar** | A Steam abre já na página do jogo |
+| 4.5 | Com a Steam **fechada**, clique em **Resgatar** em dois toasts seguidos | A Steam abre na primeira página; a segunda só abre depois que a primeira for confirmada e a Steam tiver pelo menos 40 s de vida (a Steam recém-aberta descarta links que chegam durante o login) |
 
 Se não houver promoção resgatável para a conta, registre e pule.
 
-Observação: no Windows a fila não espera a Steam terminar de abrir (no Linux espera 40 s). Se em 4.4 com dois cliques a segunda página não abrir, registre: é uma melhoria conhecida a fazer.
+Para o 4.5, a idade da Steam vem do pid em `HKCU\Software\Valve\Steam\ActiveProcess`. Se a segunda página não abrir, colete `Get-ItemProperty HKCU:\Software\Valve\Steam\ActiveProcess | Select-Object pid` com a Steam aberta e com ela fechada.
 
 ## 5. Instalador e execução no logon
 
