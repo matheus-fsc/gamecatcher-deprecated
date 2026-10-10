@@ -32,10 +32,14 @@ jobs:
           cp build/gamecatcher README.md README.en.md dist/$name/
           cp -r packaging/linux dist/$name/packaging/
           tar -C dist -czf dist/$name.tar.gz $name
+          # Binário solto para o atualizador (assinado no job release).
+          cp build/gamecatcher dist/$name
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/gamecatcher-*-linux-x86_64
 
   windows:
     runs-on: windows-latest
@@ -55,11 +59,17 @@ jobs:
           New-Item -ItemType Directory -Force -Path "dist/$name/packaging" | Out-Null
           Copy-Item build/Release/gamecatcher.exe, README.md, README.en.md "dist/$name/"
           Copy-Item -Recurse packaging/windows "dist/$name/packaging/"
+          # Dois cliques na raiz do pacote, sem PowerShell manual nem política de scripts.
+          Copy-Item packaging/windows/install.bat, packaging/windows/uninstall.bat "dist/$name/"
           Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
+          # Binário solto para o atualizador (assinado no job release).
+          Copy-Item build/Release/gamecatcher.exe "dist/$name.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*.exe
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -71,6 +81,24 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # Assinatura Ed25519 de "<nome do arquivo>\n<binário>" (ver src/update.cpp). A chave privada
+      # só existe no segredo; a pública está embutida no programa.
+      - name: Assinar binários
+        env:
+          SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > key.pem
+          pub=$(openssl pkey -in key.pem -pubout -outform DER | tail -c 32 | od -An -tx1 | tr -d ' \n')
+          embedded=$(grep -A3 'kPublicKey = {' src/update.cpp | grep -o '0x[0-9a-f]\{2\}' | sed 's/0x//' | tr -d '\n')
+          [ "$pub" = "$embedded" ] || { echo "RELEASE_SIGNING_KEY não corresponde à chave em src/update.cpp" >&2; exit 1; }
+          openssl pkey -in key.pem -pubout -out pub.pem
+          for f in dist/gamecatcher-*-linux-x86_64 dist/gamecatcher-*-windows-x64.exe; do
+            { printf '%s\n' "$(basename "$f")"; cat "$f"; } > msg.bin
+            openssl pkeyutl -sign -rawin -inkey key.pem -in msg.bin -out "$f.sig"
+            openssl pkeyutl -verify -rawin -pubin -inkey pub.pem -in msg.bin -sigfile "$f.sig"
+          done
+          rm -f key.pem pub.pem msg.bin
       - name: Publicar
         env:
           GH_TOKEN: ${{ github.token }}

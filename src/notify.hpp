@@ -24,6 +24,11 @@ enum class Choice { Claim, Ignore, Dismissed };
 void ask(const std::vector<store::Promo>& promos, const std::string& account,
          const std::function<void(const store::Promo&, Choice)>& on_choice);
 
+// Pergunta de sim/não numa notificação (ex.: "o resgate deu certo?", "atualizar?"). Bloqueia até a
+// resposta; pode ser chamada de qualquer thread, ao mesmo tempo que `ask`. true = botão `yes`;
+// false = botão `no` ou fechada.
+bool confirm(const std::string& title, const std::string& body, const std::string& yes, const std::string& no);
+
 namespace detail {
 // Textos comuns às duas plataformas.
 std::string title(const store::Promo& p);

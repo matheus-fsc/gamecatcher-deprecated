@@ -13,10 +13,10 @@ Funciona no Linux (KDE, GNOME e outros ambientes com notificações) e no Window
 1. Busca as promoções na loja pública da Steam (sem login).
 2. Ignora o que você já tem, o que você já respondeu antes e DLCs cujo jogo base você não tem.
 3. Mostra uma notificação para cada promoção nova (até 5 por vez).
-4. Ao clicar em **Resgatar**, abre a página no cliente Steam. Se você clicar em vários, eles entram numa fila: a próxima página só abre depois que a anterior foi adicionada à conta (ou depois de 10 minutos).
+4. Ao clicar em **Resgatar**, abre a página no cliente Steam. Se você clicar em vários, eles entram numa fila: a próxima página só abre depois que a anterior foi adicionada à conta. Se o gamecatcher não detectar o resgate em 10 minutos (por exemplo, porque o jogo já estava na conta), uma notificação pergunta se ele já está na conta: **Já está na conta** marca como resgatado; **Avisar depois** avisa de novo na próxima verificação.
 5. Guarda num banco local o que foi resgatado ou ignorado, separado por conta Steam.
 
-A verificação roda uma vez a cada login no computador.
+A verificação roda a cada login no computador e, para quem deixa o PC ligado, a cada 6 horas. Entre uma verificação e outra o programa não fica rodando. Se uma verificação ainda está esperando resposta nas notificações, a seguinte não começa.
 
 ### Como ele sabe o que você tem
 
@@ -47,29 +47,55 @@ Baixe o pacote do seu sistema na [página de releases](https://github.com/matheu
 Requisitos: `libcurl` e `libsystemd`, já presentes no Ubuntu, Pop!_OS, Fedora, Arch e na maioria das distribuições.
 
 ```sh
-tar xzf gamecatcher-1.0.0-linux-x86_64.tar.gz
-cd gamecatcher-1.0.0-linux-x86_64
-./packaging/linux/install.sh
+tar xzf gamecatcher-<versão>-linux-x86_64.tar.gz
+cd gamecatcher-<versão>-linux-x86_64
+./gamecatcher install
 ```
 
-O instalador copia o programa para `~/.local/bin/gamecatcher` e cria `~/.config/autostart/gamecatcher.desktop`, que roda uma verificação a cada login.
+O programa se copia para `~/.local/bin/gamecatcher` e cria `~/.config/autostart/gamecatcher.desktop`, que roda uma verificação a cada login, e um timer do systemd do usuário (`~/.config/systemd/user/gamecatcher.timer`) que roda a cada 6 horas. Não precisa de root. `./packaging/linux/install.sh` faz a mesma coisa.
 
-Para remover: `./packaging/linux/install.sh --uninstall`
+Para remover: `gamecatcher uninstall`
 
 ### Windows
 
 Requisito: Windows 10 21H2 ou mais novo, ou Windows 11.
 
-1. Extraia `gamecatcher-1.0.0-windows-x64.zip`.
-2. No PowerShell, dentro da pasta extraída:
+1. Extraia `gamecatcher-<versão>-windows-x64.zip`.
+2. Na pasta extraída, dê **dois cliques em `install.bat`**.
+
+Pronto. O programa é copiado para `%LOCALAPPDATA%\gamecatcher\bin` e a tarefa `gamecatcher` é criada no Agendador de Tarefas: uma verificação 1 minuto depois de cada logon e a cada 6 horas. Não precisa de administrador.
+
+Para remover: dois cliques em `uninstall.bat`.
+
+<details>
+<summary>Sem o .bat, pelo PowerShell</summary>
+
+Na raiz da pasta extraída (onde está o `gamecatcher.exe`):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1
+powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1 -Uninstall
 ```
 
-O instalador copia o programa para `%LOCALAPPDATA%\gamecatcher\bin` e cria a tarefa `gamecatcher` no Agendador de Tarefas, que roda uma verificação 1 minuto depois de cada logon. Não precisa de administrador.
+`.\install.ps1` direto dá erro de "não está assinado digitalmente": o Windows bloqueia scripts baixados da internet. O `-ExecutionPolicy Bypass` libera só esta execução. O `install.bat` já faz isso por você.
+</details>
 
-Para remover: `powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1 -Uninstall`
+**Por que um .bat e não o próprio `gamecatcher.exe`?** No Windows, quem cria a tarefa agendada é o PowerShell (assinado pela Microsoft). Um `.exe` sem assinatura digital que cria a própria tarefa de logon tem o comportamento típico de malware ("persistência"), e o Windows Defender bloqueia (`Behavior:Win32/Persistence.A!ml`). Por isso o gamecatcher não faz isso sozinho no Windows.
+
+## Atualizações
+
+O programa instalado procura uma versão nova uma vez por dia, nas [releases do GitHub](https://github.com/matheus-fsc/gamecatcher/releases) (API pública, sem login). Se houver, mostra uma notificação:
+
+- **Atualizar**: baixa a versão nova e troca o programa. Vale a partir da próxima verificação.
+- **Agora não**: pergunta de novo no dia seguinte.
+
+Nada é instalado sem o seu clique. Para atualizar na hora: `gamecatcher update` (no Windows: `%LOCALAPPDATA%\gamecatcher\bin\gamecatcher.exe update`).
+
+Cada release publica o binário de cada sistema com uma **assinatura Ed25519**. A chave pública está embutida no programa e a privada só existe como segredo no CI do GitHub. Antes de trocar qualquer arquivo, o atualizador confere a assinatura: um download corrompido ou uma release adulterada é recusada e nada muda.
+
+Atualizar pelo pacote também funciona: extraia a versão nova e rode o instalador de novo (`install.bat` ou `gamecatcher install`), sem desinstalar antes.
+
+Quem tem a 1.0.x precisa instalar a 1.1.0 uma vez pelo pacote. Daí em diante as atualizações chegam sozinhas.
 
 ## Uso manual
 
@@ -78,6 +104,9 @@ gamecatcher                  verifica agora e mostra as notificações
 gamecatcher list             lista as promoções e o status de cada uma
 gamecatcher db               mostra o banco local
 gamecatcher db clear         apaga o banco local (tudo volta a ser avisado)
+gamecatcher update           baixa e instala a versão mais nova (assinatura conferida)
+gamecatcher install          (Linux) instala e agenda as verificações
+gamecatcher uninstall        (Linux) remove o programa e o agendamento
 ```
 
 Opções:

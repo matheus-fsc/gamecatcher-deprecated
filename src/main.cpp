@@ -1,7 +1,9 @@
+#include "install.hpp"
 #include "notify.hpp"
 #include "seen_db.hpp"
 #include "steam_local.hpp"
 #include "store.hpp"
+#include "update.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -17,6 +19,9 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/file.h>
 #endif
 
 namespace {
@@ -29,6 +34,12 @@ uso:
   gamecatcher list [opções]    só lista as promoções e o status no banco local
   gamecatcher db               mostra o banco local
   gamecatcher db clear         apaga o banco local (tudo volta a ser avisado)
+  gamecatcher install          (Linux) instala para o usuário atual e agenda uma verificação no
+                               login e a cada 6 horas; no Windows, use o install.bat do pacote
+  gamecatcher uninstall        (Linux) remove o programa e o agendamento (o banco local fica);
+                               no Windows, use o uninstall.bat do pacote
+  gamecatcher update           baixa e instala a versão mais nova (assinatura conferida);
+                               o programa instalado também oferece isso numa notificação, 1x por dia
 
 opções:
   --games-only                 ignora DLCs (por padrão, avisa DLCs cujo jogo base você tem)
@@ -126,7 +137,7 @@ bool can_claim_dlc(const store::Promo& p, const Local& local) {
 //
 // Confirmação: o pacote está no packageinfo.vdf E o licensecache de alguma conta mudou depois que
 // a página abriu (essa conta é quem resgatou). Com uma conta só, basta o packageinfo.vdf mudar e
-// conter o pacote.
+// conter o pacote. Se o tempo esgotar, uma notificação pergunta se o jogo já está na conta.
 class ClaimQueue {
 public:
     ClaimQueue(seen_db::Db& db, std::mutex& db_mu, const Local& local)
@@ -208,6 +219,7 @@ private:
             const auto packageinfo = steam_local::packageinfo_path(*local_.root);
             const auto since = licensecache_times();
             auto last_packageinfo = mtime(packageinfo);
+            auto last_licenses = since;
             notify::open_store(p.appid);
             std::cout << "  aguardando \"Adicionar à conta\" em " << p.name << "...\n";
 
@@ -216,12 +228,27 @@ private:
             while (!account && std::chrono::steady_clock::now() < deadline) {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 auto now_packageinfo = mtime(packageinfo);
+                auto now_licenses = licensecache_times();
                 bool changed = now_packageinfo != last_packageinfo;
+                // Nada mudou: não relê o packageinfo.vdf (em segundo plano, cada leitura conta).
+                if (!changed && now_licenses == last_licenses) continue;
                 last_packageinfo = now_packageinfo;
+                last_licenses = now_licenses;
                 account = who_claimed(p, since, changed);
             }
-            if (account) mark_claimed(p, *account, "confirmado ");
-            else std::cout << "  sem confirmação em 10 min: " << p.name << " (avisa de novo na próxima)\n";
+            if (account) {
+                mark_claimed(p, *account, "confirmado ");
+                continue;
+            }
+            // Ex.: o jogo já estava na conta (com várias contas no PC não dá para saber antes) e a
+            // Steam não registrou licença nova. Quem sabe é você.
+            std::cout << "  sem confirmação em 10 min: " << p.name << ", perguntando na notificação\n";
+            std::string body = p.name + "\nNão detectei a licença nova na Steam. Se já está na sua conta, marque "
+                                        "para não avisar de novo.";
+            if (!local_.account_name().empty()) body += "\nConta: " + local_.account_name();
+            if (notify::confirm("O resgate deu certo?", body, "Já está na conta", "Avisar depois"))
+                mark_claimed(p, local_.account_id(), "marcado    ");
+            else std::cout << "  depois     " << p.name << " (avisa de novo na próxima)\n";
         }
     }
 
@@ -235,7 +262,59 @@ private:
     std::thread thread_; // por último: começa a rodar depois que o resto foi inicializado
 };
 
+// Uma verificação por vez: o login, a repetição agendada e uma execução manual podem coincidir,
+// e duas instâncias mostrariam as mesmas notificações em dobro. A trava some quando o processo sai.
+bool single_instance() {
+#ifdef _WIN32
+    CreateMutexW(nullptr, FALSE, L"Local\\gamecatcher.run"); // handle fica aberto até o fim
+    return GetLastError() != ERROR_ALREADY_EXISTS;
+#else
+    auto lock = seen_db::Db::default_path().parent_path() / "run.lock";
+    std::filesystem::create_directories(lock.parent_path());
+    // O_CLOEXEC: o xdg-open pode iniciar a Steam como filho, e ela não pode herdar a trava.
+    int fd = open(lock.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+    return fd >= 0 && flock(fd, LOCK_EX | LOCK_NB) == 0; // fd fica aberto até o fim
+#endif
+}
+
+// Em paralelo com as promoções: se houver versão nova, pergunta numa notificação e, se você
+// aceitar, troca o programa instalado (vale a partir da próxima verificação).
+void offer_update() {
+    try {
+        auto r = update::check();
+        if (!r) return;
+        std::cout << "versão nova disponível: " << r->version << "\n";
+        if (!notify::confirm("gamecatcher " + r->version + " disponível",
+                             "Você está na " GAMECATCHER_VERSION ". A versão nova vem das releases do GitHub, e a "
+                             "assinatura é conferida antes de instalar.",
+                             "Atualizar", "Agora não")) {
+            std::cout << "  atualização adiada (pergunta de novo amanhã)\n";
+            return;
+        }
+        update::apply(*r);
+        std::cout << "  atualizado para " << r->version << " (vale a partir da próxima verificação)\n";
+    } catch (const std::exception& e) {
+        std::cerr << "atualização: " << e.what() << "\n";
+    }
+}
+
 int cmd_run(const Options& opt) {
+    if (!single_instance()) {
+        std::cout << "outra verificação já está em andamento\n";
+        return 0;
+    }
+    // Só o programa instalado (o que o agendamento chama) se atualiza. O jthread espera a
+    // pergunta da atualização terminar antes de sair.
+    std::jthread updater;
+    if (install::running_installed()) {
+        install::cleanup();
+        try {
+            if (install::refresh_if_updated()) std::cout << "agendamento refeito para a versão " GAMECATCHER_VERSION "\n";
+        } catch (const std::exception& e) {
+            std::cerr << "agendamento: " << e.what() << "\n";
+        }
+        if (update::due()) updater = std::jthread(offer_update);
+    }
     seen_db::Db db(seen_db::Db::default_path());
     std::mutex db_mu;
     const Local local = Local::load();
@@ -300,6 +379,20 @@ int cmd_list(const Options& opt) {
     return 0;
 }
 
+int cmd_update() {
+    if (!std::filesystem::exists(install::installed_exe()))
+        throw std::runtime_error("o gamecatcher não está instalado (rode: gamecatcher install)");
+    auto r = update::check();
+    if (!r) {
+        std::cout << "você já tem a versão mais nova (" GAMECATCHER_VERSION ")\n";
+        return 0;
+    }
+    std::cout << "baixando " << r->asset << "...\n";
+    update::apply(*r);
+    std::cout << "atualizado para " << r->version << "\n";
+    return 0;
+}
+
 int cmd_db(bool clear) {
     auto path = seen_db::Db::default_path();
     seen_db::Db db(path);
@@ -332,6 +425,15 @@ int main(int argc, char** argv) {
         if (argc > 1 && argv[1][0] != '-') cmd = argv[i++];
 
         if (cmd == "db") return cmd_db(i < argc && std::string(argv[i]) == "clear");
+        if (cmd == "install") {
+            install::install(install::self_exe());
+            return 0;
+        }
+        if (cmd == "uninstall") {
+            install::uninstall();
+            return 0;
+        }
+        if (cmd == "update") return cmd_update();
 
         Options opt;
         for (; i < argc; ++i) {
