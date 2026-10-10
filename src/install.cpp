@@ -25,6 +25,13 @@ namespace fs = std::filesystem;
 namespace install {
 namespace {
 
+bool same_file(const fs::path& a, const fs::path& b) {
+    std::error_code ec;
+    return fs::equivalent(a, b, ec);
+}
+
+#ifndef _WIN32
+
 std::string read_file(const fs::path& p) {
     std::ifstream f(p, std::ios::binary);
     if (!f) throw std::runtime_error("não foi possível ler " + p.string());
@@ -36,13 +43,6 @@ void write_file(const fs::path& p, const std::string& data) {
     if (!f.write(data.data(), static_cast<std::streamsize>(data.size())) || !f.flush())
         throw std::runtime_error("não foi possível gravar " + p.string());
 }
-
-bool same_file(const fs::path& a, const fs::path& b) {
-    std::error_code ec;
-    return fs::equivalent(a, b, ec);
-}
-
-#ifndef _WIN32
 
 fs::path state_dir() { return seen_db::Db::default_path().parent_path(); }
 fs::path version_file() { return state_dir() / "installed-version"; }
@@ -165,28 +165,18 @@ fs::path self_exe() {
 
 bool running_installed() { return same_file(self_exe(), installed_exe()); }
 
+#ifndef _WIN32
 void replace_installed(const std::string& data) {
     const fs::path exe = installed_exe();
-    fs::path fresh = exe, old = exe;
+    fs::path fresh = exe;
     fresh += ".new";
-    old += ".old";
     fs::create_directories(exe.parent_path());
     write_file(fresh, data);
-#ifdef _WIN32
-    // Um .exe em execução não pode ser sobrescrito nem apagado, mas pode ser renomeado.
-    if (fs::exists(exe) && !MoveFileExW(exe.c_str(), old.c_str(), MOVEFILE_REPLACE_EXISTING))
-        throw std::runtime_error("não foi possível substituir " + exe.string() + " (" + std::to_string(GetLastError()) + ")");
-    if (!MoveFileExW(fresh.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        MoveFileExW(old.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING); // desfaz
-        throw std::runtime_error("não foi possível instalar " + exe.string());
-    }
-#else
-    (void)old;
     fs::permissions(fresh, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec |
                                fs::perms::others_read | fs::perms::others_exec);
     fs::rename(fresh, exe); // atômico; quem já está rodando continua com o arquivo antigo
-#endif
 }
+#endif
 
 void cleanup() {
     std::error_code ec;

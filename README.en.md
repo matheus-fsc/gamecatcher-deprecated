@@ -86,16 +86,25 @@ Running `.\install.ps1` directly fails with "is not digitally signed": Windows b
 
 The installed program looks for a new version once a day, on the [GitHub releases](https://github.com/matheus-fsc/gamecatcher/releases) (public API, no login). If there is one, it shows a notification:
 
+**Linux:**
+
 - **Atualizar** (update): downloads the new version and replaces the program. It takes effect on the next check.
 - **Agora não** (not now): asks again the next day.
 
-Nothing is installed without your click. To update right away: `gamecatcher update` (on Windows: `%LOCALAPPDATA%\gamecatcher\bin\gamecatcher.exe update`).
+Nothing is installed without your click. To update right away: `gamecatcher update`.
 
 Each release publishes the binary for each system with an **Ed25519 signature**. The public key is embedded in the program and the private key only exists as a secret in GitHub CI. Before replacing any file, the updater checks the signature: a corrupted download or a tampered release is rejected and nothing changes.
 
-Updating from the package also works: extract the new version and run the installer again (`install.bat` or `gamecatcher install`), no need to uninstall first.
+**Windows:**
 
-Users of 1.0.x need to install 1.1.0 once from the package. From then on, updates arrive by themselves.
+- **Baixar** (download): opens the page of the new version. Download the `.zip`, extract it and double-click `install.bat` again, no need to uninstall first.
+- **Agora não** (not now): reminds you again the next day.
+
+On Windows the program does not replace itself: an unsigned `.exe` that downloads and overwrites its own file is blocked by Windows Defender, for the same reason as the `.bat` above.
+
+Updating from the package also works on both systems: extract the new version and run the installer again (`install.bat` or `gamecatcher install`).
+
+Users of 1.0.x need to install 1.1.0 once from the package. From then on, the new-version notice arrives by itself.
 
 ## Manual use
 
@@ -104,7 +113,8 @@ gamecatcher                  check now and show notifications
 gamecatcher list             list promotions and the status of each one
 gamecatcher db               show the local database
 gamecatcher db clear         clear the local database (everything is notified again)
-gamecatcher update           download and install the newest version (signature checked)
+gamecatcher update           Linux: download and install the newest version (signature checked)
+                             Windows: open the page of the new version
 gamecatcher install          (Linux) install and schedule the checks
 gamecatcher uninstall        (Linux) remove the program and the schedule
 ```

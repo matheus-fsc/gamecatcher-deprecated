@@ -38,8 +38,9 @@ uso:
                                login e a cada 6 horas; no Windows, use o install.bat do pacote
   gamecatcher uninstall        (Linux) remove o programa e o agendamento (o banco local fica);
                                no Windows, use o uninstall.bat do pacote
-  gamecatcher update           baixa e instala a versão mais nova (assinatura conferida);
-                               o programa instalado também oferece isso numa notificação, 1x por dia
+  gamecatcher update           Linux: baixa e instala a versão mais nova (assinatura conferida);
+                               Windows: abre a página da versão nova (instale pelo install.bat);
+                               o programa instalado também avisa numa notificação, 1x por dia
 
 opções:
   --games-only                 ignora DLCs (por padrão, avisa DLCs cujo jogo base você tem)
@@ -278,12 +279,22 @@ bool single_instance() {
 }
 
 // Em paralelo com as promoções: se houver versão nova, pergunta numa notificação e, se você
-// aceitar, troca o programa instalado (vale a partir da próxima verificação).
+// aceitar, troca o programa instalado (vale a partir da próxima verificação). No Windows só abre a
+// página da release (ver update.hpp).
 void offer_update() {
     try {
         auto r = update::check();
         if (!r) return;
         std::cout << "versão nova disponível: " << r->version << "\n";
+#ifdef _WIN32
+        if (notify::confirm("gamecatcher " + r->version + " disponível",
+                            "Você está na " GAMECATCHER_VERSION ". Baixe o pacote novo e rode o install.bat de "
+                            "novo, sem desinstalar antes.",
+                            "Baixar", "Agora não"))
+            notify::open_link(r->page_url);
+        else
+            std::cout << "  atualização adiada (avisa de novo amanhã)\n";
+#else
         if (!notify::confirm("gamecatcher " + r->version + " disponível",
                              "Você está na " GAMECATCHER_VERSION ". A versão nova vem das releases do GitHub, e a "
                              "assinatura é conferida antes de instalar.",
@@ -293,6 +304,7 @@ void offer_update() {
         }
         update::apply(*r);
         std::cout << "  atualizado para " << r->version << " (vale a partir da próxima verificação)\n";
+#endif
     } catch (const std::exception& e) {
         std::cerr << "atualização: " << e.what() << "\n";
     }
@@ -387,9 +399,15 @@ int cmd_update() {
         std::cout << "você já tem a versão mais nova (" GAMECATCHER_VERSION ")\n";
         return 0;
     }
+#ifdef _WIN32
+    std::cout << "versão nova: " << r->version << "\n"
+              << "baixe o pacote em " << r->page_url << " e rode o install.bat de novo\n";
+    notify::open_link(r->page_url);
+#else
     std::cout << "baixando " << r->asset << "...\n";
     update::apply(*r);
     std::cout << "atualizado para " << r->version << "\n";
+#endif
     return 0;
 }
 

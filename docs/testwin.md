@@ -110,13 +110,13 @@ Instalador: `install.bat` (dois cliques), que chama `packaging\windows\install.p
 
 ## 5b. Atualizador
 
-Sem release nova, teste com uma release falsa num servidor local: `GAMECATCHER_UPDATE_URL` troca a URL da API do GitHub (só para testes; a assinatura é conferida igual). Assinar exige a chave privada, que só o dono do repositório tem; sem ela, pule 5b.2.
+No Windows o programa **não troca o próprio .exe** (o Defender bloqueia um .exe sem assinatura de código que faz isso): ele só avisa e abre a página da release. Sem release nova, teste com uma release falsa num servidor local: `GAMECATCHER_UPDATE_URL` troca a URL da API do GitHub (só para testes). Um `latest.json` com `"tag_name": "v9.9.9"` e `"html_url"` basta.
 
 | # | Ação | Esperado |
 |---|---|---|
 | 5b.1 | `%LOCALAPPDATA%\gamecatcher\bin\gamecatcher.exe update` (sem release mais nova no GitHub) | `você já tem a versão mais nova` |
-| 5b.2 | Release falsa `v9.9.9` assinada, servida em `http://127.0.0.1:8765/latest.json`; `update` com `GAMECATCHER_UPDATE_URL` apontando para ela | `atualizado para 9.9.9`; aparece `gamecatcher.exe.old`, apagado na próxima execução; **nenhum alerta do Defender** |
-| 5b.3 | Mesma release com o binário alterado (1 byte a mais) | `assinatura inválida ... nada foi trocado`; o `.exe` instalado não muda |
+| 5b.2 | `update` com `GAMECATCHER_UPDATE_URL=http://127.0.0.1:8765/latest.json` (release falsa `v9.9.9`) | `versão nova: 9.9.9`; a página do `html_url` abre no navegador; o `.exe` instalado não muda; **nenhum alerta do Defender** |
+| 5b.3 | Apague `%LOCALAPPDATA%\gamecatcher\update-check`, defina `GAMECATCHER_UPDATE_URL` como em 5b.2 e rode o `.exe` instalado | Toast "gamecatcher 9.9.9 disponível" com **Baixar** e **Agora não**; **Baixar** abre a página; **Agora não** mostra `atualização adiada`; **nenhum alerta do Defender** |
 
 ## 6. Relatório
 

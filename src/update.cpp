@@ -72,6 +72,9 @@ std::optional<Release> check() {
     r.version = tag.rfind('v', 0) == 0 ? tag.substr(1) : tag;
     if (r.version.empty() || parse(r.version) <= parse(GAMECATCHER_VERSION)) return std::nullopt;
 
+    r.page_url = j.value("html_url", "https://github.com/matheus-fsc/gamecatcher/releases/latest");
+    if (!kSelfUpdate) return r;
+
     r.asset = "gamecatcher-" + r.version + "-" + kPlatform;
     for (const auto& a : j.value("assets", nlohmann::json::array())) {
         const std::string name = a.value("name", "");
@@ -82,12 +85,14 @@ std::optional<Release> check() {
     return r;
 }
 
+#ifndef _WIN32
 void apply(const Release& r) {
     const std::string binary = fetch(r.binary_url, "application/octet-stream").body;
     const std::string sig = fetch(r.sig_url, "application/octet-stream").body;
     if (!verify(r.asset, binary, sig)) throw std::runtime_error("assinatura inválida em " + r.asset + ": nada foi trocado");
     install::replace_installed(binary);
 }
+#endif
 
 bool due() {
     std::error_code ec;

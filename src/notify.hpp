@@ -40,6 +40,9 @@ std::optional<std::chrono::seconds> steam_age();
 bool open_url(const std::string& url); // false se não houver programa para o link
 } // namespace detail
 
+// Abre um link no programa padrão (navegador, para https://).
+inline bool open_link(const std::string& url) { return detail::open_url(url); }
+
 // Abre a página do app no cliente Steam (steam://store/<appid>), ou no navegador se não houver cliente.
 void open_store(uint32_t appid);
 

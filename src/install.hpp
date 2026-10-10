@@ -4,7 +4,7 @@
 //   Linux:   `gamecatcher install` copia para ~/.local/bin e agenda: autostart XDG no login e
 //            timer do systemd do usuário (6 h). Rodar de novo atualiza a instalação.
 //   Windows: o install.bat do pacote (PowerShell) copia para %LOCALAPPDATA%\gamecatcher\bin e cria
-//            a tarefa. O programa só troca o próprio executável nas atualizações (ver install.cpp).
+//            a tarefa. O programa nunca cria tarefas nem troca o próprio executável (Defender).
 
 #include <filesystem>
 #include <string>
@@ -21,9 +21,11 @@ void install(const std::filesystem::path& from);
 // Linux: remove o agendamento e o programa; o seen.db fica. Windows: lança, indicando o uninstall.bat.
 void uninstall();
 
-// Troca o executável instalado por `data`, mesmo com ele rodando. No Windows o antigo fica como
-// ".old" até a próxima execução (cleanup()), porque um .exe em uso não pode ser apagado.
+#ifndef _WIN32
+// Troca o executável instalado por `data`, mesmo com ele rodando (quem já roda segue com o antigo).
 void replace_installed(const std::string& data);
+#endif
+// Windows: o install.ps1 renomeia um .exe em uso para ".old"; apaga esse resto na próxima execução.
 void cleanup();
 
 // Linux: depois de uma atualização, o programa novo refaz o agendamento na primeira execução (pode

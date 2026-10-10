@@ -86,16 +86,25 @@ powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1 -Uninstal
 
 O programa instalado procura uma versão nova uma vez por dia, nas [releases do GitHub](https://github.com/matheus-fsc/gamecatcher/releases) (API pública, sem login). Se houver, mostra uma notificação:
 
+**Linux:**
+
 - **Atualizar**: baixa a versão nova e troca o programa. Vale a partir da próxima verificação.
 - **Agora não**: pergunta de novo no dia seguinte.
 
-Nada é instalado sem o seu clique. Para atualizar na hora: `gamecatcher update` (no Windows: `%LOCALAPPDATA%\gamecatcher\bin\gamecatcher.exe update`).
+Nada é instalado sem o seu clique. Para atualizar na hora: `gamecatcher update`.
 
 Cada release publica o binário de cada sistema com uma **assinatura Ed25519**. A chave pública está embutida no programa e a privada só existe como segredo no CI do GitHub. Antes de trocar qualquer arquivo, o atualizador confere a assinatura: um download corrompido ou uma release adulterada é recusada e nada muda.
 
-Atualizar pelo pacote também funciona: extraia a versão nova e rode o instalador de novo (`install.bat` ou `gamecatcher install`), sem desinstalar antes.
+**Windows:**
 
-Quem tem a 1.0.x precisa instalar a 1.1.0 uma vez pelo pacote. Daí em diante as atualizações chegam sozinhas.
+- **Baixar**: abre a página da versão nova. Baixe o `.zip`, extraia e dê dois cliques no `install.bat` de novo, sem desinstalar antes.
+- **Agora não**: avisa de novo no dia seguinte.
+
+No Windows o programa não troca a si mesmo: um `.exe` sem assinatura digital que baixa e substitui o próprio arquivo é bloqueado pelo Windows Defender, pelo mesmo motivo do `.bat` acima.
+
+Atualizar pelo pacote também funciona nos dois sistemas: extraia a versão nova e rode o instalador de novo (`install.bat` ou `gamecatcher install`).
+
+Quem tem a 1.0.x precisa instalar a 1.1.0 uma vez pelo pacote. Daí em diante o aviso de versão nova chega sozinho.
 
 ## Uso manual
 
@@ -104,7 +113,8 @@ gamecatcher                  verifica agora e mostra as notificações
 gamecatcher list             lista as promoções e o status de cada uma
 gamecatcher db               mostra o banco local
 gamecatcher db clear         apaga o banco local (tudo volta a ser avisado)
-gamecatcher update           baixa e instala a versão mais nova (assinatura conferida)
+gamecatcher update           Linux: baixa e instala a versão mais nova (assinatura conferida)
+                             Windows: abre a página da versão nova
 gamecatcher install          (Linux) instala e agenda as verificações
 gamecatcher uninstall        (Linux) remove o programa e o agendamento
 ```
