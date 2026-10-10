@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(gamecatcher VERSION 1.0.1 LANGUAGES CXX)
+project(gamecatcher VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,11 +18,26 @@ if(NOT nlohmann_json_FOUND)
   FetchContent_MakeAvailable(json)
 endif()
 
+# Monocypher: verificação Ed25519 das atualizações (2 arquivos C, domínio público / BSD-2).
+FetchContent_Declare(monocypher
+  URL https://monocypher.org/download/monocypher-4.0.2.tar.gz
+  URL_HASH SHA256=38d07179738c0c90677dba3ceb7a7b8496bcfea758ba1a53e803fed30ae0879c
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(monocypher)
+add_library(monocypher STATIC
+  ${monocypher_SOURCE_DIR}/src/monocypher.c
+  ${monocypher_SOURCE_DIR}/src/optional/monocypher-ed25519.c)
+target_include_directories(monocypher PUBLIC
+  ${monocypher_SOURCE_DIR}/src
+  ${monocypher_SOURCE_DIR}/src/optional)
+
 add_executable(gamecatcher
   src/main.cpp
   src/http.cpp
   src/store.cpp
   src/seen_db.cpp
+  src/install.cpp
+  src/update.cpp
   src/steam_local.cpp
   src/notify_common.cpp)
 
@@ -39,7 +54,7 @@ else()
   target_link_libraries(gamecatcher PRIVATE PkgConfig::SYSTEMD)
 endif()
 
-target_link_libraries(gamecatcher PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)
+target_link_libraries(gamecatcher PRIVATE CURL::libcurl nlohmann_json::nlohmann_json monocypher)
 target_compile_definitions(gamecatcher PRIVATE GAMECATCHER_VERSION="${PROJECT_VERSION}")
 
 if(MSVC)

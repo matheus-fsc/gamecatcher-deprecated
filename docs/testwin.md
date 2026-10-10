@@ -87,6 +87,7 @@ Este teste precisa do usuário humano. Explique a ele o que vai acontecer e peç
 | 4.2 | Peça ao usuário para clicar em "Adicionar à conta" | Em poucos segundos: `confirmado  <jogo> (<conta>)` |
 | 4.3 | Clique em **Resgatar** em dois toasts seguidos | A segunda página só abre depois que a primeira foi confirmada (ou após 10 minutos) |
 | 4.4 | Com a Steam **fechada**, clique em **Resgatar** | A Steam abre já na página do jogo |
+| 4.4b | Clique em **Resgatar** num jogo que a conta **já tem** e espere 10 minutos | O terminal mostra `sem confirmação em 10 min`; aparece o toast "O resgate deu certo?". **Já está na conta** mostra `marcado`; **Avisar depois** mostra `depois` |
 | 4.5 | Com a Steam **fechada**, clique em **Resgatar** em dois toasts seguidos | A Steam abre na primeira página; a segunda só abre depois que a primeira for confirmada e a Steam tiver pelo menos 40 s de vida (a Steam recém-aberta descarta links que chegam durante o login) |
 
 Se não houver promoção resgatável para a conta, registre e pule.
@@ -95,18 +96,27 @@ Para o 4.5, a idade da Steam vem do pid em `HKCU\Software\Valve\Steam\ActiveProc
 
 ## 5. Instalador e execução no logon
 
-```powershell
-powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1
-```
+Instalador: `install.bat` (dois cliques), que chama `packaging\windows\install.ps1` com `-ExecutionPolicy Bypass`.
 
 | # | Ação | Esperado |
 |---|---|---|
-| 5.1 | Rodar o instalador | Mensagens com acentos corretos; `%LOCALAPPDATA%\gamecatcher\bin\gamecatcher.exe` existe |
-| 5.2 | `Get-ScheduledTask gamecatcher \| Select-Object -ExpandProperty Triggers` | Gatilho de logon com atraso de 1 minuto |
+| 5.1 | Dois cliques em `install.bat` (ou `cmd /c install.bat`) | Mensagens com acentos corretos; `%LOCALAPPDATA%\gamecatcher\bin\gamecatcher.exe` existe; **nenhum alerta do Windows Defender** (`Get-MpThreatDetection`) |
+| 5.2 | `Get-ScheduledTask gamecatcher \| Select-Object -ExpandProperty Triggers` | Gatilho de logon com atraso de 1 minuto e gatilho com repetição `PT6H` |
+| 5.2b | Com uma verificação esperando resposta nos toasts, rode `.\gamecatcher.exe` em outro terminal | `outra verificação já está em andamento`, sem toasts duplicados |
 | 5.3 | `.\gamecatcher.exe db clear` e depois `Start-ScheduledTask gamecatcher` | Os toasts aparecem **sem nenhuma janela de console** (o `conhost --headless` esconde) |
 | 5.4 | Responda os toasts | `Get-ScheduledTaskInfo gamecatcher` mostra `LastTaskResult` 0 depois que todos forem respondidos |
 | 5.5 | (Opcional, com autorização do usuário) sair e entrar de novo no Windows | Cerca de 1 minuto depois do logon, a verificação roda sozinha |
-| 5.6 | `powershell -ExecutionPolicy Bypass -File packaging\windows\install.ps1 -Uninstall` | A tarefa e a pasta `bin` são removidas; o `seen.db` continua |
+| 5.6 | Dois cliques em `uninstall.bat` | A tarefa, a pasta `bin` e a chave `HKCU\Software\Classes\AppUserModelId\gamecatcher.notifier` são removidas; o `seen.db` continua |
+
+## 5b. Atualizador
+
+Sem release nova, teste com uma release falsa num servidor local: `GAMECATCHER_UPDATE_URL` troca a URL da API do GitHub (só para testes; a assinatura é conferida igual). Assinar exige a chave privada, que só o dono do repositório tem; sem ela, pule 5b.2.
+
+| # | Ação | Esperado |
+|---|---|---|
+| 5b.1 | `%LOCALAPPDATA%\gamecatcher\bin\gamecatcher.exe update` (sem release mais nova no GitHub) | `você já tem a versão mais nova` |
+| 5b.2 | Release falsa `v9.9.9` assinada, servida em `http://127.0.0.1:8765/latest.json`; `update` com `GAMECATCHER_UPDATE_URL` apontando para ela | `atualizado para 9.9.9`; aparece `gamecatcher.exe.old`, apagado na próxima execução; **nenhum alerta do Defender** |
+| 5b.3 | Mesma release com o binário alterado (1 byte a mais) | `assinatura inválida ... nada foi trocado`; o `.exe` instalado não muda |
 
 ## 6. Relatório
 

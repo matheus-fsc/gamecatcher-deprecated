@@ -13,7 +13,10 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace notify {
 namespace {
@@ -58,6 +61,40 @@ void register_aumid() {
     SetCurrentProcessExplicitAppUserModelID(kAumid);
 }
 
+// Toast com botões; `actions`: pares (argumento devolvido no clique, texto do botão).
+ToastNotification make_toast(const std::string& title, const std::string& body,
+                             const std::vector<std::pair<std::string, std::string>>& actions) {
+    std::wstring xml =
+        L"<toast scenario=\"reminder\">"
+        L"<visual><binding template=\"ToastGeneric\">"
+        L"<text>" + xml_escape(widen(title)) + L"</text>"
+        L"<text>" + xml_escape(widen(body)) + L"</text>"
+        L"</binding></visual>"
+        L"<actions>";
+    for (const auto& [arg, text] : actions)
+        xml += L"<action content=\"" + xml_escape(widen(text)) + L"\" arguments=\"" + xml_escape(widen(arg)) +
+               L"\" activationType=\"foreground\"/>";
+    xml += L"</actions></toast>";
+    XmlDocument doc;
+    doc.LoadXml(xml);
+    return ToastNotification(doc);
+}
+
+// Liga os eventos do toast a `answer`, chamada uma única vez com o argumento do botão clicado
+// ("" = fechado sem escolher). Activated e Dismissed podem chegar os dois.
+void on_answer(const ToastNotification& toast, std::function<void(const std::wstring&)> answer) {
+    auto once = std::make_shared<std::once_flag>();
+    auto call = [once, answer = std::move(answer)](const std::wstring& a) { std::call_once(*once, answer, a); };
+    toast.Activated([call](const ToastNotification&, const winrt::Windows::Foundation::IInspectable& args) {
+        call(std::wstring(args.as<ToastActivatedEventArgs>().Arguments()));
+    });
+    toast.Dismissed([call](const ToastNotification&, const ToastDismissedEventArgs& args) {
+        // TimedOut = foi para a Central de Ações; os botões continuam lá, então seguimos esperando.
+        if (args.Reason() != ToastDismissalReason::TimedOut) call(L"");
+    });
+    toast.Failed([call](const ToastNotification&, const ToastFailedEventArgs&) { call(L""); });
+}
+
 } // namespace
 
 void ask(const std::vector<store::Promo>& promos, const std::string& account,
@@ -72,46 +109,45 @@ void ask(const std::vector<store::Promo>& promos, const std::string& account,
     std::vector<ToastNotification> toasts; // manter vivos enquanto esperamos os eventos
 
     for (const auto& p : promos) {
-        std::wstring body = xml_escape(widen(detail::body(p, account)));
-        std::wstring xml =
-            L"<toast scenario=\"reminder\">"
-            L"<visual><binding template=\"ToastGeneric\">"
-            L"<text>" + xml_escape(widen(detail::title(p))) + L"</text>"
-            L"<text>" + body + L"</text>"
-            L"</binding></visual>"
-            L"<actions>"
-            L"<action content=\"Resgatar\" arguments=\"claim\" activationType=\"foreground\"/>"
-            L"<action content=\"Ignorar\" arguments=\"ignore\" activationType=\"foreground\"/>"
-            L"</actions></toast>";
-        XmlDocument doc;
-        doc.LoadXml(xml);
-        ToastNotification toast(doc);
-
-        auto answered = std::make_shared<bool>(false);
-        auto finish = [&, answered, &p = p](Choice c) {
+        auto toast = make_toast(detail::title(p), detail::body(p, account), {{"claim", "Resgatar"}, {"ignore", "Ignorar"}});
+        on_answer(toast, [&, &p = p](const std::wstring& a) {
             std::lock_guard lock(mu);
-            if (*answered) return; // Activated e Dismissed podem chegar os dois
-            *answered = true;
-            on_choice(p, c);
+            on_choice(p, a == L"claim" ? Choice::Claim : a == L"ignore" ? Choice::Ignore : Choice::Dismissed);
             --pending;
             cv.notify_all();
-        };
-        toast.Activated([finish](const ToastNotification&, const winrt::Windows::Foundation::IInspectable& args) {
-            auto a = args.as<ToastActivatedEventArgs>().Arguments();
-            finish(a == L"claim" ? Choice::Claim : a == L"ignore" ? Choice::Ignore : Choice::Dismissed);
         });
-        toast.Dismissed([finish](const ToastNotification&, const ToastDismissedEventArgs& args) {
-            // TimedOut = foi para a Central de Ações; os botões continuam lá, então seguimos esperando.
-            if (args.Reason() != ToastDismissalReason::TimedOut) finish(Choice::Dismissed);
-        });
-        toast.Failed([finish](const ToastNotification&, const ToastFailedEventArgs&) { finish(Choice::Dismissed); });
-
         notifier.Show(toast);
         toasts.push_back(toast);
     }
 
     std::unique_lock lock(mu);
     cv.wait(lock, [&] { return pending == 0; });
+}
+
+bool confirm(const std::string& title, const std::string& body, const std::string& yes, const std::string& no) {
+    winrt::init_apartment(); // chamada de outras threads (fila de resgates, atualização)
+    register_aumid();
+    auto notifier = ToastNotificationManager::CreateToastNotifier(kAumid);
+
+    // Compartilhado com os eventos: um evento atrasado não pode acessar esta pilha depois do return.
+    struct State {
+        std::mutex mu;
+        std::condition_variable cv;
+        std::optional<bool> yes;
+    };
+    auto st = std::make_shared<State>();
+
+    auto toast = make_toast(title, body, {{"yes", yes}, {"no", no}});
+    on_answer(toast, [st](const std::wstring& a) {
+        std::lock_guard lock(st->mu);
+        st->yes = a == L"yes";
+        st->cv.notify_all();
+    });
+    notifier.Show(toast);
+
+    std::unique_lock lock(st->mu);
+    st->cv.wait(lock, [&] { return st->yes.has_value(); });
+    return *st->yes;
 }
 
 namespace detail {
