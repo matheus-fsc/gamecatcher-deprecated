@@ -32,7 +32,11 @@ if(WIN32)
   target_compile_definitions(gamecatcher PRIVATE NOMINMAX UNICODE _UNICODE)
   target_link_libraries(gamecatcher PRIVATE windowsapp shell32 advapi32)
 else()
+  # Notificações via D-Bus (sd-bus da libsystemd).
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
   target_sources(gamecatcher PRIVATE src/notify_linux.cpp)
+  target_link_libraries(gamecatcher PRIVATE PkgConfig::SYSTEMD)
 endif()
 
 target_link_libraries(gamecatcher PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)

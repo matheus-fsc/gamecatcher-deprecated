@@ -1,7 +1,7 @@
 #pragma once
 
 // Notificação na área de trabalho com dois botões: "Resgatar" e "Ignorar".
-//   Linux: notify-send (libnotify >= 0.7.12) como subprocesso.
+//   Linux: D-Bus (org.freedesktop.Notifications) via sd-bus.
 //   Windows: toast nativo via C++/WinRT.
 
 #include "store.hpp"

@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Dependências
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev ninja-build
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsystemd-dev pkg-config ninja-build
       - name: Compilar
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

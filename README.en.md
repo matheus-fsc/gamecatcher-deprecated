@@ -44,7 +44,7 @@ Download the package for your system from the [releases page](https://github.com
 
 ### Linux
 
-Requirements: `libcurl` and `notify-send` (package `libnotify`), available on most distributions.
+Requirements: `libcurl` and `libsystemd`, already present on Ubuntu, Pop!_OS, Fedora, Arch and most distributions.
 
 ```sh
 tar xzf gamecatcher-1.0.0-linux-x86_64.tar.gz

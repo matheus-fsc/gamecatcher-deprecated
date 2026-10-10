@@ -18,7 +18,6 @@ default_bin="$root/gamecatcher"
 [[ -x "$default_bin" ]] || default_bin="$root/build/gamecatcher"
 bin="${1:-$default_bin}"
 [[ -x "$bin" ]] || { echo "binário não encontrado: $bin (rode cmake --build build)" >&2; exit 1; }
-command -v notify-send >/dev/null || echo "aviso: notify-send não encontrado (instale libnotify)" >&2
 
 install -Dm755 "$bin" "$HOME/.local/bin/gamecatcher"
 mkdir -p "$(dirname "$autostart")"
